@@ -9,6 +9,7 @@ import CreateOrderScreen from "../features/orders/screens/CreateOrderScreen";
 import OrdersScreen from "../features/orders/screens/OrdersScreen";
 import CreateReservationScreen from "../features/reservations/screens/CreateReservationScreen";
 import ReservationsScreen from "../features/reservations/screens/ReservationsScreen";
+import CreateReviewScreen from "../features/reviews/screens/CreateReviewScreen";
 import ProfileScreen from "../features/profile/screens/ProfileScreen";
 
 const Tab = createBottomTabNavigator();
@@ -25,6 +26,7 @@ const RestaurantsStack = () => (
 const OrdersStack = () => (
     <Stack.Navigator>
         <Stack.Screen name="OrdersList" component={OrdersScreen} options={{ title: "Mis Pedidos" }} />
+        <Stack.Screen name="CreateReview" component={CreateReviewScreen} options={{ title: "Calificar Pedido" }} />
     </Stack.Navigator>
 );
 
