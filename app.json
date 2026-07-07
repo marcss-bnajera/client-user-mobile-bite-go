@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "client-user-mobile-bite-go",
-    "slug": "client-user-mobile-bite-go",
+    "name": "Bite&Go",
+    "slug": "bitego-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,14 +11,23 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#3A2E2A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.anonymous.bitegomobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d10653a7-ba0b-4de8-bdec-3127fe4c0f3e"
+      }
     }
   }
 }
