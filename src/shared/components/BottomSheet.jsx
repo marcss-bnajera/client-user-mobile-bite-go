@@ -18,7 +18,7 @@ const BottomSheet = forwardRef(({ children, onDismiss, title }, ref) => {
     const dismiss = () => {
         translateY.value = withSpring(SHEET_H, springDismiss, () => {
             runOnJS(setVisible)(false);
-            onDismiss?.();
+            if (onDismiss) runOnJS(onDismiss)();
         });
     };
 
@@ -44,7 +44,7 @@ const BottomSheet = forwardRef(({ children, onDismiss, title }, ref) => {
             if (pos > DISMISS_THRESHOLD || vel > VELOCITY_THRESHOLD) {
                 translateY.value = withSpring(SHEET_H, springDismiss, () => {
                     runOnJS(setVisible)(false);
-                    onDismiss?.();
+                    if (onDismiss) runOnJS(onDismiss)();
                 });
             } else {
                 translateY.value = withSpring(0, springBack);
