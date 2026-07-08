@@ -12,7 +12,11 @@ export const useAuth = () => {
         try {
             setLoading(true);
             setError(null);
-            const response = await authClient.post("/login", data);
+            const payload = {
+                EmailOrUsername: (data.emailOrUsername || "").trim(),
+                Password: data.password,
+            };
+            const response = await authClient.post("/login", payload);
             const { accessToken, refreshToken, userDetails, token, user } = response.data;
 
             const mappedAccessToken = accessToken || token;
@@ -21,7 +25,7 @@ export const useAuth = () => {
             await login(mappedAccessToken, mappedUser, refreshToken);
             return response.data;
         } catch (err) {
-            setError(err.response?.data?.message || "Error al iniciar sesión");
+            setError(err.response?.data?.message || "Error al iniciar sesion");
             throw err;
         } finally {
             setLoading(false);

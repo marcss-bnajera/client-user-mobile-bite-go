@@ -1,54 +1,87 @@
-import { View, Text, Image, KeyboardAvoidingView, Platform, ScrollView, Alert } from "react-native";
+import { View, Text, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useForm, Controller } from "react-hook-form";
-import Input from "../../../shared/components/Input";
-import Button from "../../../shared/components/Button";
-import FadeInView from "../../../shared/components/FadeInView";
-import { SHADOWS } from "../../../shared/constants/tokens";
-import { useAuth } from "../hooks/useAuth";
+import Input from "../../../shared/components/Input.jsx";
+import Button from "../../../shared/components/Button.jsx";
+import FadeInView from "../../../shared/components/FadeInView.jsx";
+import { SHADOWS, BRAND } from "../../../shared/constants/tokens.js";
+import { COLORS } from "../../../shared/constants/theme.js";
+import { useAuth } from "../hooks/useAuth.js";
+import { useAlert } from "../../../shared/providers/AlertProvider.jsx";
 import logo from "../../../../assets/BiteGoLogo.png";
 
 const LoginScreen = ({ navigation }) => {
     const { handleLogin, loading } = useAuth();
+    const { show } = useAlert();
     const { control, handleSubmit, formState: { errors } } = useForm({
         defaultValues: { emailOrUsername: "", password: "" },
     });
 
     const onSubmit = async (data) => {
         try { await handleLogin(data); }
-        catch (error) { Alert.alert("Error", error.response?.data?.message || "Error al iniciar sesión"); }
+        catch (error) {
+            show({ type: "error", title: "Error al iniciar sesion", message: error.response?.data?.message || "Verifica tus credenciales e intenta de nuevo" });
+        }
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 bg-canvas">
-            <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }} keyboardShouldPersistTaps="handled">
-                <FadeInView className="mb-10 items-center">
-                    <Image source={logo} style={{ width: 200, height: 60, resizeMode: "contain" }} />
-                    <Text className="mt-2 text-sm text-muted">Los mejores restaurantes, en tu bolsillo</Text>
-                </FadeInView>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+            <StatusBar barStyle="dark-content" />
+            <LinearGradient colors={["#F5EFE6", "#E8D8C3"]} style={styles.hero}>
+                <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+                    <FadeInView style={styles.logoWrap}>
+                        <Image source={logo} style={styles.logo} />
+                        <Text style={styles.tagline}>Los mejores restaurantes, en tu bolsillo</Text>
+                    </FadeInView>
 
-                <FadeInView delay={120} style={SHADOWS.card} className="rounded-3xl bg-surface p-6">
-                    <Text className="mb-5 text-xl font-bold text-ink">Bienvenido de vuelta</Text>
+                    <FadeInView delay={120} style={[styles.card, SHADOWS.card]}>
+                        <Text style={styles.cardTitle}>Bienvenido de vuelta</Text>
+                        <Text style={styles.cardSubtitle}>Inicia sesion para continuar</Text>
 
-                    <Controller control={control} rules={{ required: "Email o usuario requerido" }}
-                        render={({ field: { onChange, value } }) => (
-                            <Input label="Email o usuario" placeholder="correo@ejemplo.com" onChangeText={onChange} value={value} autoCapitalize="none" error={errors.emailOrUsername?.message} />
-                        )} name="emailOrUsername" />
+                        <Controller control={control} rules={{ required: "Email o usuario requerido" }}
+                            render={({ field: { onChange, value } }) => (
+                                <Input label="Email o usuario" placeholder="correo@ejemplo.com" onChangeText={onChange} value={value} autoCapitalize="none" error={errors.emailOrUsername?.message} />
+                            )} name="emailOrUsername" />
 
-                    <Controller control={control} rules={{ required: "Contraseña requerida" }}
-                        render={({ field: { onChange, value } }) => (
-                            <Input label="Contraseña" placeholder="••••••••" secureTextEntry onChangeText={onChange} value={value} autoCapitalize="none" error={errors.password?.message} />
-                        )} name="password" />
+                        <Controller control={control} rules={{ required: "Contrasena requerida" }}
+                            render={({ field: { onChange, value } }) => (
+                                <Input label="Contrasena" placeholder="********" secureTextEntry onChangeText={onChange} value={value} autoCapitalize="none" error={errors.password?.message} />
+                            )} name="password" />
 
-                    <Button title="Iniciar sesión" onPress={handleSubmit(onSubmit)} loading={loading} className="mt-2" />
-                </FadeInView>
+                        <Button title="Iniciar sesion" onPress={handleSubmit(onSubmit)} loading={loading} style={{ marginTop: 8 }} />
 
-                <FadeInView delay={240} className="mt-8 flex-row justify-center">
-                    <Text className="text-base text-muted">¿No tienes cuenta? </Text>
-                    <Text className="text-base font-bold text-primary" onPress={() => navigation.navigate("Register")}>Regístrate</Text>
-                </FadeInView>
-            </ScrollView>
+                        <Text style={styles.forgotPassword} onPress={() => show({ type: "info", title: "Recuperar contrasena", message: "Contacta al administrador para recuperar tu contrasena: soporte@bitego.com" })}>
+                            ¿Olvidaste tu contraseña?
+                        </Text>
+                    </FadeInView>
+
+                    <FadeInView delay={240} style={styles.registerWrap}>
+                        <Text style={styles.registerText}>¿No tienes cuenta? </Text>
+                        <Text style={styles.registerLink} onPress={() => navigation.navigate("Register")}>Registrate</Text>
+                    </FadeInView>
+                </ScrollView>
+            </LinearGradient>
         </KeyboardAvoidingView>
     );
+};
+
+const styles = {
+    flex: { flex: 1 },
+    hero: { flex: 1 },
+    scrollContent: { flexGrow: 1, justifyContent: "center", padding: 24 },
+    logoWrap: { alignItems: "center", marginBottom: 32 },
+    logo: { width: 220, height: 65, resizeMode: "contain" },
+    tagline: { fontSize: 14, color: BRAND.muted, marginTop: 8, textAlign: "center" },
+    card: {
+        backgroundColor: "#fff", borderRadius: 20, padding: 24,
+        borderWidth: 1, borderColor: COLORS.border,
+    },
+    cardTitle: { fontSize: 22, fontWeight: "800", color: BRAND.ink },
+    cardSubtitle: { fontSize: 13, color: BRAND.muted, marginTop: 2, marginBottom: 20 },
+    forgotPassword: { fontSize: 13, color: BRAND.primary, textAlign: "center", marginTop: 12, fontWeight: "600" },
+    registerWrap: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 24, width: "100%" },
+    registerText: { fontSize: 14, color: BRAND.muted, textAlign: "center" },
+    registerLink: { fontSize: 14, fontWeight: "700", color: BRAND.primary, textAlign: "center" },
 };
 
 export default LoginScreen;
