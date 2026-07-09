@@ -31,11 +31,18 @@ export const useReviews = () => {
         [reviews]
     );
 
-    const createReview = useCallback(async ({ id_pedido, calificacion, comentario }) => {
-        const response = await userClient.post("/reviewsRatings", { id_pedido, calificacion, comentario });
+    const createReview = useCallback(async ({ id_pedido, id_reservacion, id_sucursal, calificacion, comentario }) => {
+        const response = await userClient.post("/reviewsRatings", { id_pedido, id_reservacion, id_sucursal, calificacion, comentario });
         await getReviews();
         return response.data;
     }, [getReviews]);
 
-    return { reviews, reviewedOrderIds, loading, error, getReviews, createReview };
+    const getEligible = useCallback(async (id_restaurante, id_sucursal) => {
+        const params = {};
+        if (id_sucursal) params.id_sucursal = id_sucursal;
+        const response = await userClient.get(`/reviewsRatings/eligible/${id_restaurante}`, { params });
+        return response.data;
+    }, []);
+
+    return { reviews, reviewedOrderIds, loading, error, getReviews, createReview, getEligible };
 };
