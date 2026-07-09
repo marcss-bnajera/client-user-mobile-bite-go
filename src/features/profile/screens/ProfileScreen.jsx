@@ -1,174 +1,313 @@
-import { useEffect, useState } from "react";
-import { View, Text, TextInput, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from "react-native";
+import { useEffect, useState, useCallback } from "react";
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableOpacity, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { User, Phone, MapPin, Save, RotateCcw } from "lucide-react-native";
-import Button from "../../../shared/components/Button.jsx";
-import FadeInView from "../../../shared/components/FadeInView.jsx";
-import { SHADOWS } from "../../../shared/constants/tokens.js";
+import { User, Phone, MapPin, Camera, X, Bell, Home, Star, ChevronRight, LogOut } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuthStore } from "../../../shared/store/authStore.js";
-import { getProfile, updateProfile } from "../../../shared/api";
+import { uploadProfilePhoto, deleteProfilePhoto } from "../../../shared/api";
+import { BRAND, SHADOWS } from "../../../shared/constants/tokens.js";
+import { COLORS } from "../../../shared/constants/theme.js";
+import userClient from "../../../shared/api/userClient.js";
+import { useAlert } from "../../../shared/providers/AlertProvider.jsx";
 
-const EMPTY = { nombre: "", telefono: "", direccion: "" };
+const isValidAvatar = (url) =>
+    url && url.trim() !== "" && url.includes("res.cloudinary.com") && !url.includes("default-avatar");
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ navigation }) => {
     const { user, logout } = useAuthStore();
+    const { show, confirm } = useAlert();
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState(EMPTY);
-    const [initial, setInitial] = useState(EMPTY);
-    const [focused, setFocused] = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const [imgFailed, setImgFailed] = useState(false);
+    const [profile, setProfile] = useState(null);
+    const [addresses, setAddresses] = useState([]);
+    const [reviewCount, setReviewCount] = useState(0);
 
-    useEffect(() => {
-        if (!user?.id) { setLoading(false); return; }
-        getProfile(user.id)
-            .then(({ data }) => {
-                const u = data.user || data;
-                const loaded = {
-                    nombre: u.nombre || "",
-                    telefono: u.telefono || "",
-                    direccion: u.direccion || "",
-                };
-                setForm(loaded);
-                setInitial(loaded);
-            })
-            .catch(() => {
-                // Usuario no existe en MongoDB (ej: superadmin del seeder)
-                setForm(EMPTY);
-                setInitial(EMPTY);
-            })
-            .finally(() => setLoading(false));
-    }, [user?.id]);
+    const avatarSrc = isValidAvatar(user?.profilePicture)
+        ? user.profilePicture
+        : isValidAvatar(user?.foto_url)
+            ? user.foto_url
+            : null;
+    const showAvatar = avatarSrc && !imgFailed;
 
-    const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+    useEffect(() => { setImgFailed(false); }, [avatarSrc]);
 
-    const handleChange = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
-    const handleReset = () => setForm(initial);
+    useFocusEffect(
+        useCallback(() => {
+            if (!user) { setLoading(false); return; }
+            Promise.allSettled([
+                userClient.get("/users/me"),
+                userClient.get("/users/addresses/list"),
+                userClient.get("/reviewsRatings"),
+            ]).then(([meRes, addrRes, revRes]) => {
+                if (meRes.status === "fulfilled") {
+                    const u = meRes.value.data.user || meRes.value.data;
+                    setProfile(u);
+                    if (u.foto_url || u.profilePicture) {
+                        useAuthStore.setState((state) => ({
+                            user: { ...state.user, profilePicture: u.foto_url || u.profilePicture },
+                        }));
+                    }
+                }
+                if (addrRes.status === "fulfilled") {
+                    setAddresses(addrRes.value.data.direcciones || []);
+                }
+                if (revRes.status === "fulfilled") {
+                    setReviewCount((revRes.value.data.reviews || []).length);
+                }
+            }).finally(() => setLoading(false));
+        }, [user])
+    );
 
-    const handleSave = async () => {
-        setSaving(true);
+    const handlePickPhoto = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+        if (result.canceled || !result.assets?.[0]) return;
+        const asset = result.assets[0];
+        if (asset.fileSize > 5 * 1024 * 1024) {
+            show({ type: "error", title: "Imagen muy grande", message: "La imagen no puede superar 5 MB" });
+            return;
+        }
+        setUploading(true);
         try {
-            await updateProfile(user.id, form);
-            setInitial(form);
-            Alert.alert("Listo", "Tu perfil fue actualizado");
-        } catch {
-            Alert.alert("Error", "No se pudo actualizar tu perfil");
+            const formData = new FormData();
+            formData.append("foto", {
+                uri: asset.uri,
+                type: asset.mimeType || "image/jpeg",
+                name: asset.fileName || "photo.jpg",
+            });
+            const { data } = await uploadProfilePhoto(formData);
+            if (data.success) {
+                useAuthStore.setState((state) => ({
+                    user: { ...state.user, profilePicture: data.foto_url },
+                }));
+                setProfile((prev) => prev ? { ...prev, foto_url: data.foto_url } : prev);
+            }
+        } catch (err) {
+            show({ type: "error", title: "Error al subir", message: err.response?.data?.message || "No se pudo subir la imagen" });
         } finally {
-            setSaving(false);
+            setUploading(false);
         }
     };
 
+    const handleDeletePhoto = () => {
+        confirm({
+            title: "Eliminar foto",
+            message: "¿Eliminar tu foto de perfil?",
+            confirmText: "Eliminar",
+            onConfirm: async () => {
+                try {
+                    const { data } = await deleteProfilePhoto();
+                    if (data.success) {
+                        useAuthStore.setState((state) => ({
+                            user: { ...state.user, profilePicture: "" },
+                        }));
+                        setProfile((prev) => prev ? { ...prev, foto_url: "" } : prev);
+                    }
+                } catch {}
+            },
+        });
+    };
+
     const handleLogout = () => {
-        Alert.alert("Cerrar sesión", "¿Estás seguro que deseas salir?", [
-            { text: "Cancelar", style: "cancel" },
-            { text: "Aceptar", onPress: () => logout() },
-        ]);
+        confirm({
+            title: "Cerrar sesion",
+            message: "¿Estas seguro que deseas salir?",
+            confirmText: "Salir",
+            onConfirm: () => logout(),
+        });
     };
 
     if (loading) {
         return (
-            <View className="flex-1 items-center justify-center bg-canvas">
-                <ActivityIndicator size="large" color="#E67E22" />
-                <Text className="mt-3 text-sm text-faint">Cargando perfil…</Text>
+            <View style={styles.loadingWrap}>
+                <ActivityIndicator size="large" color={BRAND.primary} />
+                <Text style={styles.loadingText}>Cargando perfil...</Text>
             </View>
         );
     }
 
     return (
-        <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
-                <LinearGradient colors={["#3A2E2A", "#2B211D"]} className="items-center px-6 pb-10 pt-16">
-                    <FadeInView className="h-24 w-24 items-center justify-center rounded-full border-4 border-white/20 bg-white" style={SHADOWS.primary}>
-                        <Text className="text-4xl font-extrabold text-primary">
-                            {user?.username?.[0]?.toUpperCase() || "?"}
-                        </Text>
-                    </FadeInView>
-                    <Text className="mt-4 text-2xl font-bold text-white">{user?.username || "Usuario"}</Text>
-                    <View className="mt-1.5 rounded-full bg-white/15 px-3 py-1">
-                        <Text className="text-xs font-semibold uppercase tracking-wide text-white">{user?.role || "Cliente"}</Text>
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+                <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.hero}>
+                    <TouchableOpacity onPress={handlePickPhoto} disabled={uploading} activeOpacity={0.7} style={styles.avatarTouchable}>
+                        <View style={styles.avatarWrap}>
+                            {uploading ? (
+                                <ActivityIndicator size="large" color="#fff" />
+                            ) : showAvatar ? (
+                                <Image source={{ uri: avatarSrc }} style={styles.avatarImg} resizeMode="cover" onError={() => setImgFailed(true)} />
+                            ) : (
+                                <User size={36} color="#fff" />
+                            )}
+                        </View>
+                        <View style={styles.cameraBadge}>
+                            <Camera size={14} color="#fff" />
+                        </View>
+                    </TouchableOpacity>
+                    {showAvatar && (
+                        <TouchableOpacity onPress={handleDeletePhoto} style={styles.deletePhotoBtn}>
+                            <X size={12} color="#fff" />
+                            <Text style={styles.deletePhotoText}>Eliminar foto</Text>
+                        </TouchableOpacity>
+                    )}
+                    <Text style={styles.heroUsername}>{user?.username || "Usuario"}</Text>
+                    <Text style={styles.heroEmail}>{user?.email || ""}</Text>
+                    <View style={styles.roleBadge}>
+                        <Text style={styles.roleText}>{user?.role || "Cliente"}</Text>
                     </View>
                 </LinearGradient>
 
-                <FadeInView delay={120} className="flex-1 px-5 pt-6">
-                    <View className="mb-5 rounded-2xl bg-surface p-4" style={SHADOWS.card}>
-                        <Text className="mb-4 text-base font-bold text-ink">Información personal</Text>
-
-                        <Field
-                            icon={User}
-                            label="Nombre"
-                            value={form.nombre}
-                            onChangeText={handleChange("nombre")}
-                            placeholder="Tu nombre completo"
-                            focused={focused === "nombre"}
-                            onFocus={() => setFocused("nombre")}
-                            onBlur={() => setFocused(null)}
-                        />
-                        <Field
-                            icon={Phone}
-                            label="Teléfono"
-                            value={form.telefono}
-                            onChangeText={handleChange("telefono")}
-                            placeholder="1234 5678"
-                            keyboardType="phone-pad"
-                            focused={focused === "telefono"}
-                            onFocus={() => setFocused("telefono")}
-                            onBlur={() => setFocused(null)}
-                        />
-                        <Field
-                            icon={MapPin}
-                            label="Dirección"
-                            value={form.direccion}
-                            onChangeText={handleChange("direccion")}
-                            placeholder="Zona, calle y número"
-                            focused={focused === "direccion"}
-                            onFocus={() => setFocused("direccion")}
-                            onBlur={() => setFocused(null)}
-                            last
-                        />
-
-                        {dirty && (
-                            <View className="mt-2 flex-row gap-3">
-                                <View className="flex-1">
-                                    <Button title="Descartar" variant="secondary" onPress={handleReset} disabled={saving} icon={RotateCcw} />
-                                </View>
-                                <View className="flex-1">
-                                    <Button
-                                        title={saving ? "Guardando…" : "Guardar"}
-                                        variant="primary"
-                                        onPress={handleSave}
-                                        disabled={saving}
-                                        loading={saving}
-                                        icon={Save}
-                                    />
-                                </View>
-                            </View>
-                        )}
+                <View style={styles.body}>
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Informacion personal</Text>
+                        <ReadOnlyField icon={User} label="Nombre" value={profile?.nombre || "-"} />
+                        <ReadOnlyField icon={Phone} label="Telefono" value={profile?.telefono || "-"} />
+                        <ReadOnlyField icon={MapPin} label="Direccion principal" value={profile?.direccion || "-"} last />
                     </View>
 
-                    <Button title="Cerrar sesión" variant="danger" onPress={handleLogout} />
-                    <Text className="mt-8 pb-4 text-center text-xs text-faint">Bite&Go v1.0.0</Text>
-                </FadeInView>
+                    {addresses.length === 0 && (
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate("Addresses")}
+                            style={styles.addAddressBanner}
+                            activeOpacity={0.7}
+                        >
+                            <MapPin size={20} color={BRAND.primary} />
+                            <View style={styles.addAddressTextWrap}>
+                                <Text style={styles.addAddressTitle}>Agrega tu direccion</Text>
+                                <Text style={styles.addAddressSub}>Para poder recibir pedidos a domicilio</Text>
+                            </View>
+                            <ChevronRight size={16} color={BRAND.primary} />
+                        </TouchableOpacity>
+                    )}
+
+                    <View style={styles.card}>
+                        <MenuItem icon={Home} iconColor="#3498DB" label="Mis Direcciones" onPress={() => navigation.navigate("Addresses")} badge={addresses.length > 0 ? `${addresses.length}` : null} />
+                        <MenuItem icon={Star} iconColor="#F59E0B" label="Mis Reseñas" onPress={() => navigation.navigate("MyReviews")} badge={reviewCount > 0 ? `${reviewCount}` : null} />
+                        <MenuItem icon={Bell} iconColor="#E67E22" label="Notificaciones" onPress={() => navigation.navigate("Notifications")} last />
+                    </View>
+
+                    <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+                        <LogOut size={18} color={COLORS.error} />
+                        <Text style={styles.logoutText}>Cerrar sesion</Text>
+                    </TouchableOpacity>
+
+                    <Text style={styles.version}>Bite&Go v1.0.0</Text>
+                </View>
             </ScrollView>
         </KeyboardAvoidingView>
     );
 };
 
-const Field = ({ icon: Icon, label, value, onChangeText, placeholder, keyboardType, focused, onFocus, onBlur, last }) => (
-    <View className={last ? "" : "mb-4"}>
-        <Text className="mb-1.5 text-xs font-semibold text-ink">{label}</Text>
-        <View className={`flex-row items-center rounded-xl border bg-canvas px-3 ${focused ? "border-primary" : "border-transparent"}`}>
-                            <Icon size={17} color={focused ? "#E67E22" : "#9CA3AF"} />
-            <TextInput
-                value={value}
-                onChangeText={onChangeText}
-                placeholder={placeholder}
-                placeholderTextColor="#B8B8B8"
-                keyboardType={keyboardType}
-                onFocus={onFocus}
-                onBlur={onBlur}
-                className="ml-2 flex-1 py-2.5 text-sm text-ink"
-            />
+const ReadOnlyField = ({ icon: Icon, label, value, last }) => (
+    <View style={last ? {} : styles.fieldWrap}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <View style={styles.readOnlyWrap}>
+            <Icon size={16} color="#9CA3AF" />
+            <Text style={styles.readOnlyValue}>{value}</Text>
         </View>
     </View>
 );
+
+const MenuItem = ({ icon: Icon, iconColor, label, onPress, last, badge }) => (
+    <TouchableOpacity onPress={onPress} style={[styles.menuItem, !last && styles.menuItemBorder]} activeOpacity={0.6}>
+        <View style={[styles.menuIconWrap, { backgroundColor: iconColor + "15" }]}>
+            <Icon size={16} color={iconColor} />
+        </View>
+        <Text style={styles.menuLabel}>{label}</Text>
+        {badge && (
+            <View style={styles.menuBadge}>
+                <Text style={styles.menuBadgeText}>{badge}</Text>
+            </View>
+        )}
+        <ChevronRight size={16} color="#9CA3AF" />
+    </TouchableOpacity>
+);
+
+const styles = {
+    flex: { flex: 1, backgroundColor: COLORS.background },
+    scrollContent: { paddingBottom: 40 },
+    loadingWrap: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.background },
+    loadingText: { marginTop: 10, fontSize: 13, color: COLORS.secondary },
+
+    hero: { alignItems: "center", paddingTop: 56, paddingBottom: 28, paddingHorizontal: 24 },
+    avatarTouchable: { position: "relative", width: 92, height: 92 },
+    avatarWrap: {
+        width: 88, height: 88, borderRadius: 44, overflow: "hidden",
+        justifyContent: "center", alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.2)", borderWidth: 3, borderColor: "rgba(255,255,255,0.3)",
+    },
+    avatarImg: { width: "100%", height: "100%" },
+    cameraBadge: {
+        position: "absolute", bottom: -2, right: -2,
+        width: 28, height: 28, borderRadius: 14,
+        backgroundColor: COLORS.darkBg, justifyContent: "center", alignItems: "center",
+        borderWidth: 2, borderColor: COLORS.primary,
+    },
+    deletePhotoBtn: {
+        flexDirection: "row", alignItems: "center", marginTop: 8,
+        backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    },
+    deletePhotoText: { fontSize: 11, color: "#fff", marginLeft: 4, fontWeight: "500" },
+    heroUsername: { fontSize: 22, fontWeight: "700", color: "#fff", marginTop: 12 },
+    heroEmail: { fontSize: 13, color: "rgba(255,255,255,0.75)", marginTop: 3 },
+    roleBadge: {
+        marginTop: 8, backgroundColor: "rgba(255,255,255,0.2)",
+        paddingHorizontal: 12, paddingVertical: 3, borderRadius: 12,
+    },
+    roleText: { fontSize: 12, fontWeight: "600", color: "#fff", textTransform: "uppercase", letterSpacing: 0.5 },
+
+    body: { paddingHorizontal: 16, paddingTop: 20 },
+    card: {
+        backgroundColor: "#fff", borderRadius: 16, padding: 18, marginBottom: 14,
+        borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.card,
+    },
+    cardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text, marginBottom: 14 },
+
+    fieldWrap: { marginBottom: 12 },
+    fieldLabel: { fontSize: 12, fontWeight: "600", color: COLORS.secondary, marginBottom: 5 },
+    readOnlyWrap: {
+        flexDirection: "row", alignItems: "center",
+        borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+        backgroundColor: COLORS.background, paddingHorizontal: 12, paddingVertical: 10,
+    },
+    readOnlyValue: { marginLeft: 8, fontSize: 14, color: COLORS.text, flex: 1 },
+
+    addAddressBanner: {
+        flexDirection: "row", alignItems: "center",
+        backgroundColor: COLORS.primary + "10", borderRadius: 14,
+        borderWidth: 1, borderColor: COLORS.primary + "30",
+        padding: 14, marginBottom: 14, gap: 12,
+    },
+    addAddressTextWrap: { flex: 1 },
+    addAddressTitle: { fontSize: 14, fontWeight: "700", color: BRAND.primary },
+    addAddressSub: { fontSize: 12, color: COLORS.secondary, marginTop: 2 },
+
+    menuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 14 },
+    menuItemBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
+    menuIconWrap: {
+        width: 32, height: 32, borderRadius: 10, justifyContent: "center", alignItems: "center",
+    },
+    menuLabel: { flex: 1, marginLeft: 12, fontSize: 14, fontWeight: "600", color: COLORS.text },
+    menuBadge: {
+        backgroundColor: COLORS.primary, borderRadius: 10,
+        minWidth: 22, height: 22, justifyContent: "center", alignItems: "center", marginRight: 6,
+    },
+    menuBadgeText: { fontSize: 11, fontWeight: "700", color: "#fff" },
+
+    logoutBtn: {
+        flexDirection: "row", alignItems: "center", justifyContent: "center",
+        borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.error + "40",
+        paddingVertical: 14, marginTop: 6, gap: 8,
+    },
+    logoutText: { fontSize: 14, fontWeight: "600", color: COLORS.error },
+
+    version: { textAlign: "center", fontSize: 11, color: COLORS.secondary, marginTop: 20 },
+};
 
 export default ProfileScreen;

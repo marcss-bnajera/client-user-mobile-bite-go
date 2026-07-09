@@ -4,12 +4,16 @@ import { COLORS } from "../shared/constants/theme";
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
 import { useAuthStore } from "../shared/store/authStore";
+import { useAppLifecycle } from "../shared/hooks/useAppLifecycle";
 
 const AppNavigator = () => {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
     const isHydrated = useAuthStore((state) => state._hasHydrated);
+    const isLoadingAuth = useAuthStore((state) => state.isLoadingAuth);
 
-    if (!isHydrated) {
+    useAppLifecycle();
+
+    if (!isHydrated || (isAuthenticated && isLoadingAuth)) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
