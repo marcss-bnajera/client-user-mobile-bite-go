@@ -26,8 +26,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "d10653a7-ba0b-4de8-bdec-3127fe4c0f3e"
+        "projectId": "06bb8de4-b84c-4e1a-a66f-b37317d95038"
       }
-    }
+    },
+    "owner": "lendrock"
   }
 }
