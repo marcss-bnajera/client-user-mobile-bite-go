@@ -17,10 +17,19 @@ const LoginScreen = ({ navigation }) => {
         defaultValues: { emailOrUsername: "", password: "" },
     });
 
+    const getErrorMessage = (raw) => {
+        if (!raw) return "Verifica tus credenciales e intenta de nuevo";
+        if (raw === "User account is disabled") {
+            return "Tu cuenta no está activada. Revisa tu correo y haz clic en el enlace de verificación.";
+        }
+        return raw;
+    };
+
     const onSubmit = async (data) => {
         try { await handleLogin(data); }
         catch (error) {
-            show({ type: "error", title: "Error al iniciar sesion", message: error.response?.data?.message || "Verifica tus credenciales e intenta de nuevo" });
+            const raw = error.response?.data?.message;
+            show({ type: "error", title: "Error al iniciar sesion", message: getErrorMessage(raw) });
         }
     };
 
@@ -50,7 +59,7 @@ const LoginScreen = ({ navigation }) => {
 
                         <Button title="Iniciar sesion" onPress={handleSubmit(onSubmit)} loading={loading} style={{ marginTop: 8 }} />
 
-                        <Text style={styles.forgotPassword} onPress={() => show({ type: "info", title: "Recuperar contrasena", message: "Contacta al administrador para recuperar tu contrasena: soporte@bitego.com" })}>
+                        <Text style={styles.forgotPassword} onPress={() => navigation.navigate("ForgotPassword")}>
                             ¿Olvidaste tu contraseña?
                         </Text>
                     </FadeInView>
