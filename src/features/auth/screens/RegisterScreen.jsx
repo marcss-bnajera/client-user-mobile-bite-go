@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { View, Text, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useForm, Controller } from "react-hook-form";
+import { Mail } from "lucide-react-native";
 import Input from "../../../shared/components/Input.jsx";
 import Button from "../../../shared/components/Button.jsx";
 import FadeInView from "../../../shared/components/FadeInView.jsx";
@@ -11,8 +13,11 @@ import { useAlert } from "../../../shared/providers/AlertProvider.jsx";
 import logo from "../../../../assets/BiteGoLogo.png";
 
 const RegisterScreen = ({ navigation }) => {
-    const { handleRegister, loading } = useAuth();
+    const { handleRegister, handleResendVerification, loading } = useAuth();
     const { show } = useAlert();
+    const [registeredEmail, setRegisteredEmail] = useState("");
+    const [resending, setResending] = useState(false);
+    const [cooldown, setCooldown] = useState(0);
     const { control, handleSubmit, formState: { errors } } = useForm({
         defaultValues: { name: "", surname: "", username: "", email: "", password: "", phone: "" },
     });
@@ -20,16 +25,69 @@ const RegisterScreen = ({ navigation }) => {
     const onSubmit = async (data) => {
         try {
             await handleRegister(data);
-            show({
-                type: "success",
-                title: "Registro exitoso",
-                message: "Tu cuenta ha sido creada. Ahora puedes iniciar sesion",
-                buttons: [{ text: "OK", onPress: () => navigation.navigate("Login") }],
-            });
+            setRegisteredEmail(data.email);
         } catch (error) {
             show({ type: "error", title: "Error al registrarse", message: error.response?.data?.message || "Intenta con otros datos" });
         }
     };
+
+    const handleResend = async () => {
+        try {
+            setResending(true);
+            await handleResendVerification(registeredEmail);
+        } catch {
+            show({ type: "error", title: "Error", message: "No se pudo reenviar el correo" });
+        } finally {
+            setResending(false);
+            setCooldown(45);
+            const interval = setInterval(() => {
+                setCooldown(prev => {
+                    if (prev <= 1) {
+                        clearInterval(interval);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }
+    };
+
+    if (registeredEmail) {
+        return (
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+                <StatusBar barStyle="dark-content" />
+                <LinearGradient colors={["#F5EFE6", "#E8D8C3"]} style={styles.hero}>
+                    <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+                        <FadeInView style={[styles.card, SHADOWS.card]} delay={120}>
+                            <View style={{ alignItems: "center" }}>
+                                <View style={styles.mailIconWrap}>
+                                    <Mail size={32} color={BRAND.primary} />
+                                </View>
+                                <Text style={styles.verifTitle}>Revisa tu correo</Text>
+                                <Text style={styles.verifSub}>
+                                    Te enviamos un enlace de verificación a{" "}
+                                    <Text style={{ fontWeight: "700", color: BRAND.ink }}>{registeredEmail}</Text>.
+                                    {"\n"}Haz clic en el enlace para activar tu cuenta.
+                                </Text>
+                                <View style={styles.verifTip}>
+                                    <Text style={styles.verifTipText}>¿No recibiste el correo?</Text>
+                                    <Text style={styles.verifTipSub}>Revisa tu carpeta de spam o solicita un nuevo enlace.</Text>
+                                </View>
+                                <Text
+                                    style={[styles.resendLink, (resending || cooldown > 0) && { color: "#9CA3AF" }]}
+                                    onPress={handleResend}
+                                    disabled={resending || cooldown > 0}
+                                >
+                                    {resending ? "Enviando..." : cooldown > 0 ? `Reenviar en ${cooldown}s` : "Reenviar correo"}
+                                </Text>
+                                <Button title="Ya lo verifiqué, iniciar sesión" onPress={() => navigation.navigate("Login")} style={{ marginTop: 16 }} />
+                            </View>
+                        </FadeInView>
+                    </ScrollView>
+                </LinearGradient>
+            </KeyboardAvoidingView>
+        );
+    }
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
@@ -75,6 +133,20 @@ const styles = {
     loginWrap: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 20, width: "100%" },
     loginText: { fontSize: 14, color: BRAND.muted, textAlign: "center" },
     loginLink: { fontSize: 14, fontWeight: "700", color: BRAND.primary, textAlign: "center" },
+    mailIconWrap: {
+        width: 64, height: 64, borderRadius: 32,
+        backgroundColor: "#F5EFE6", alignItems: "center", justifyContent: "center",
+        marginBottom: 16,
+    },
+    verifTitle: { fontSize: 22, fontWeight: "800", color: BRAND.ink, textAlign: "center" },
+    verifSub: { fontSize: 13, color: BRAND.muted, textAlign: "center", marginTop: 8, lineHeight: 20 },
+    verifTip: {
+        backgroundColor: "#F5EFE6", borderRadius: 12, padding: 16,
+        marginTop: 20, width: "100%", alignItems: "center",
+    },
+    verifTipText: { fontSize: 13, color: BRAND.muted, fontWeight: "600" },
+    verifTipSub: { fontSize: 12, color: BRAND.muted, marginTop: 2 },
+    resendLink: { fontSize: 14, color: BRAND.primary, fontWeight: "700", marginTop: 16 },
 };
 
 export default RegisterScreen;

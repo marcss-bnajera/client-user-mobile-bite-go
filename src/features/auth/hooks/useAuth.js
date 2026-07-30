@@ -49,6 +49,18 @@ export const useAuth = () => {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
+            try {
+                const { default: userClient } = await import("../../../shared/api/userClient.js");
+                await userClient.post("/users/sync", {
+                    email: data.email,
+                    nombre: `${data.name} ${data.surname}`.trim(),
+                    username: data.username,
+                    telefono: data.phone,
+                });
+            } catch {
+                // MongoDB sync is best-effort
+            }
+
             return response.data;
         } catch (err) {
             setError(err.response?.data?.message || "Error al registrarse");
@@ -58,5 +70,42 @@ export const useAuth = () => {
         }
     };
 
-    return { handleLogin, handleRegister, loading, error, logout };
+    const handleForgotPassword = async (email) => {
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await authClient.post("/forgot-password", { email });
+            return response.data;
+        } catch (err) {
+            setError(err.response?.data?.message || "Error al enviar el correo");
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResetPassword = async (token, newPassword) => {
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await authClient.post("/reset-password", { token, newPassword });
+            return response.data;
+        } catch (err) {
+            setError(err.response?.data?.message || "Error al restablecer la contraseña");
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResendVerification = async (email) => {
+        try {
+            const response = await authClient.post("/resend-verification", { email });
+            return response.data;
+        } catch (err) {
+            throw err;
+        }
+    };
+
+    return { handleLogin, handleRegister, handleForgotPassword, handleResetPassword, handleResendVerification, loading, error, logout };
 };
